@@ -9,15 +9,19 @@ import random
 app = Flask(__name__)
 CORS(app)
 
-# Load environment variables
+# Initialize AI model - using smaller model for deployment
+# Use bart-base instead of bart-large to reduce memory usage
 MODEL_NAME = os.getenv("MODEL_NAME", "facebook/bart-base")
+classifier = None  # Lazy load on first request
 
-# Initialize AI model - using multilingual BERT for Bengali/English
-# This will auto-download on first run
-classifier = pipeline("zero-shot-classification", model=MODEL_NAME)
-
-
-
+def get_classifier():
+    """Lazy load classifier to save memory"""
+    global classifier
+    if classifier is None:
+        print("📊 Loading AI Model (first request)...")
+        classifier = pipeline("zero-shot-classification", model=MODEL_NAME)
+        print("✅ Model loaded!")
+    return classifier
 
 # Issue categories
 CATEGORIES = [
@@ -82,7 +86,8 @@ def analyze_posts():
         
         for post in posts:
             # Use AI to classify the post
-            result = classifier(post['text'], candidate_labels=CATEGORIES)
+            clf = get_classifier()
+            result = clf(post['text'], candidate_labels=CATEGORIES)
             
             top_category = result['labels'][0]
             confidence = result['scores'][0]
@@ -127,7 +132,8 @@ def get_statistics():
     high_severity_count = 0
     
     for post in posts:
-        result = classifier(post['text'], candidate_labels=CATEGORIES)
+        clf = get_classifier()
+        result = clf(post['text'], candidate_labels=CATEGORIES)
         category = result['labels'][0]
         severity = calculate_severity(post['text'], category)
         
@@ -164,6 +170,6 @@ def health_check():
 if __name__ == '__main__':
     print("🚀 CivicPulse AI Backend Starting...")
     print("📊 Waiting for first request to load model...")  # Lazy loading to save memory
-
+    
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
